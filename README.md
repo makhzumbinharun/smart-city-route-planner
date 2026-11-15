@@ -10,7 +10,7 @@ Engineering (CSE) · Bangladesh University of Business and Technology (BUBT)
 **Team:** Quad Core
 
 > **Status:** all planned features are implemented and tested (development
-> milestones S1–S8.3). The automated test suite contains **400 checks**, all
+> milestones S1–S9). The automated test suite contains **456 checks**, all
 > passing with both supported build configurations.
 
 ## Contents
@@ -31,9 +31,10 @@ Engineering (CSE) · Bangladesh University of Business and Technology (BUBT)
 14. [Application Workflow](#application-workflow)
 15. [Documentation](#documentation)
 16. [Team](#team)
-17. [Limitations](#limitations)
-18. [Future Improvements](#future-improvements)
-19. [License](#license)
+17. [Faculty Information](#faculty-information)
+18. [Limitations](#limitations)
+19. [Future Improvements](#future-improvements)
+20. [License](#license)
 
 ---
 
@@ -69,14 +70,14 @@ planning tool. The included sample network of ten Dhaka locations uses
 
 | Area | Features |
 |---|---|
-| Locations | Add, show, rename and delete locations. IDs are assigned automatically and never reused. Names are trimmed and must be unique (ignoring upper/lower case). Deleting a location also deletes its roads. |
+| Locations | Add, show, rename and delete locations. IDs are assigned automatically and stay sequential (1, 2, 3, ...): after a deletion, every higher ID moves down by one. Names are trimmed and must be unique (ignoring upper/lower case). Deleting a location also deletes its roads. |
 | Roads | Add, show, update and delete two-way roads. Both locations must exist, a road cannot join a location to itself, at most one road per pair, distance greater than 0 and at most 10,000 km. |
 | Network display | The whole network as an adjacency list with road distances. |
 | Algorithms | BFS, DFS, Dijkstra, Kruskal with DSU, Floyd–Warshall and the best facility location (menu options 10–15). |
 | Disconnected networks | Unreachable locations are listed; Kruskal returns a Minimum Spanning Forest; the facility analysis reports each connected part separately and lists isolated locations. |
 | Data storage | Automatic CSV saving after every change; invalid lines in the files are skipped with a message; the sample network is loaded on the first run. |
 | Console interface | Menu-driven dashboard with a colour theme on Windows terminals and an automatic plain-text mode. |
-| Testing | 400 automated checks run through CTest. |
+| Testing | 456 automated checks run through CTest. |
 
 ## Algorithms Implemented
 
@@ -152,7 +153,7 @@ smart-city-route-planner/
 │   ├── ui.cpp            Colours, tables, messages, plain-text fallback
 │   └── main.cpp          Menu program: input, output, one function per option
 ├── tests/
-│   └── tests.cpp         400 automated checks
+│   └── tests.cpp         456 automated checks
 ├── data/
 │   └── sample/           Sample network: 10 Dhaka locations, 14 roads
 ├── docs/                 Algorithms, user guide, development notes, proposal/
@@ -305,13 +306,28 @@ in Git**; the repository only contains the sample in `data/sample/`.
 |---|---|---|
 | `data/locations.csv` | header `id,name`, then one location per line | `1,BUBT` |
 | `data/roads.csv` | header `from,to,distance` (location IDs and km), one road per line, each road once | `1,2,2.5` |
-| `data/next_id.txt` | the ID the next new location will get | `11` |
+| `data/next_id.txt` | the ID the next new location will get (always the highest location ID + 1) | `11` |
 
 - **First launch:** if **none** of the three working files exists, the program
   copies the sample network from `data/sample/` (10 locations, 14 roads) and
   says so on the start screen. If any working file exists, nothing is copied,
   so saved data is **never overwritten**.
-- The program saves automatically after every successful change.
+- The program saves automatically after every successful change. The three
+  files are first written as temporary files and only then replace the old
+  files, so a failed save never leaves a mix of old and new data. If saving a
+  deletion fails, the deletion is undone in the program as well.
+- **Deleting a location renumbers the IDs.** The location and all its roads
+  are removed, then every location with a higher ID moves down by one, and
+  every road end that pointed to a moved location is updated. Names,
+  distances and the other connections stay the same. Example with the sample
+  network: deleting Farmgate [5] turns Dhanmondi [6] into [5], …, Gulshan [10]
+  into [9]; the road `9,10,7` becomes `8,9,7`; `next_id.txt` becomes `10`.
+  Deleting the last location renumbers nothing; deleting the only location
+  leaves an empty city whose next ID is 1.
+- **Roads have no ID of their own.** A road is identified by its two location
+  IDs (`from,to`), so there are no road IDs to renumber: when the location IDs
+  change, the road ends change with them, and `roads.csv` is rewritten in
+  order of the location IDs.
 - Invalid lines (wrong number of values, unknown or duplicate IDs, duplicate
   names, invalid distances, duplicate roads) are skipped with a message that
   names the file and line.
@@ -368,8 +384,8 @@ ctest --test-dir build-mingw --output-on-failure
 ```
 
 The expected result is `100% tests passed out of 1`: CTest runs one program,
-`tests.exe`, which performs all **400 checks**. Running it directly shows every
-check and ends with `400 passed, 0 failed`:
+`tests.exe`, which performs all **456 checks**. Running it directly shows every
+check and ends with `456 passed, 0 failed`:
 
 ```powershell
 .\build-mingw\tests.exe
@@ -397,7 +413,8 @@ the sample network.
 | 9 | Single location | Empty test folder: add one location, then option 15 | That location is the centre; radius 0.00 km, diameter 0.00 km |
 | 10 | Empty network | Empty test folder: options 10–15 | Each option says that the network is empty |
 | 11 | Invalid input | Type `abc` at the menu; type `99`; add location `  bubt  `; add a road of `20000` km | "Invalid input. Please enter a whole number."; "Please choose a number from the menu."; "A location named "BUBT" already exists."; "The distance must be greater than 0 and at most 10000.00 km." |
-| 12 | Persistence | Add a location, exit with 0, start again | The new location is still there; a deleted location's ID is never given to a new location |
+| 12 | Persistence | Add a location, exit with 0, start again | The new location is still there with the same ID and roads |
+| 13 | Delete and renumber | Fresh sample: option 4, delete Farmgate [5], answer `y`; options 2 and 6; exit with 0, start again; option 1, add "Banani" | 9 locations: Dhanmondi [5] … Gulshan [9]; 11 roads, e.g. 2–8 8.50 km (was 2–9) and 8–9 7.00 km (was 9–10); after the restart the IDs are unchanged and Banani gets ID **10**; `next_id.txt` contains 10 before Banani is added |
 
 ## Application Workflow
 
@@ -437,8 +454,8 @@ Each screen asks only for the IDs it needs and explains invalid input. The
 | [docs/algorithms.md](docs/algorithms.md) | Graph representation and every algorithm, with steps, worked examples and complexity |
 | [docs/user-guide.md](docs/user-guide.md) | Building (Command Prompt) and using every menu option |
 | [docs/development-notes.md](docs/development-notes.md) | Toolchain, code walkthrough, tests, Git workflow, decision log and milestones |
-| [Project proposal (PDF)](docs/proposal/smart-city-route-planner-proposal-revised.pdf) | Revised project proposal |
-| [Project proposal (Word)](docs/proposal/smart-city-route-planner-proposal-revised.docx) | Revised project proposal, editable version |
+| [Project proposal (PDF)](docs/proposal/PROJECT%20PROPOSAL%20OF%20SMART%20CITY%20ROUTE%20%26%20INFRASTRUCTURE%20PLANNER%20BY%20QUAD%20CORE_revised.pdf) | Revised project proposal |
+| [Project proposal (Word)](docs/proposal/PROJECT%20PROPOSAL%20OF%20SMART%20CITY%20ROUTE%20%26%20INFRASTRUCTURE%20PLANNER%20BY%20QUAD%20CORE_revised.docx) | Revised project proposal, editable version |
 
 ## Team
 
@@ -450,6 +467,13 @@ Each screen asks only for the IDs it needs and explains invalid input. The
 | 20254103248 | OALID KHAN | Member |
 | 20254103269 | MD. RAFIUL ISLAM | Member |
 | 20254103279 | MAKHZUM-BIN-HARUN | Team Leader |
+
+## Faculty Information
+
+**Mushfiqur Rahman**\
+Lecturer, Department of Computer Science & Engineering\
+Bangladesh University of Business and Technology (BUBT)\
+LinkedIn: [linkedin.com/in/mushfiqur-rahman41](https://www.linkedin.com/in/mushfiqur-rahman41)
 
 ## Limitations
 

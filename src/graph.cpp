@@ -95,24 +95,51 @@ bool Graph::renameLocation(int id, const std::string& newName)
     return true;
 }
 
-// Time: O(deg x deg') - for each road of this location, the neighbour's
-// road list is searched to remove the road from the other side too.
+// Time: O(V log V + E) - removing the roads looks at the neighbours' lists,
+// and renumbering rebuilds both maps once.
 bool Graph::removeLocation(int id)
 {
     if (!hasLocation(id)) {
         return false;
     }
 
-    // Every road is stored in two lists. The copy in THIS location's list
-    // disappears when the list is erased below, but the copy in each
-    // neighbour's list must be removed one by one.
+    // 1. Remove the location and its roads. Every road is stored in two
+    //    lists: the copy in THIS location's list disappears when the list is
+    //    erased, but the copy in each neighbour's list must be removed too.
     for (const Edge& edge : adjacency[id]) {
         removeEdge(edge.to, id);
     }
-
     adjacency.erase(id);
     names.erase(id);
+
+    // 2. Renumber: every ID greater than the deleted one moves down by one.
+    //    The maps are rebuilt with the new IDs (a map key cannot be changed),
+    //    and every road end is updated with the same rule.
+    std::map<int, std::string> newNames;
+    std::map<int, std::vector<Edge>> newAdjacency;
+    for (const auto& entry : names) {
+        newNames[shiftedId(entry.first, id)] = entry.second;
+    }
+    for (const auto& entry : adjacency) {
+        std::vector<Edge> roads = entry.second;   // same roads, same order
+        for (Edge& edge : roads) {
+            edge.to = shiftedId(edge.to, id);
+        }
+        newAdjacency[shiftedId(entry.first, id)] = roads;
+    }
+    names = newNames;
+    adjacency = newAdjacency;
+
+    // 3. The next new location gets the next sequential ID.
+    nextId = names.empty() ? 1 : names.rbegin()->first + 1;
     return true;
+}
+
+// The new ID of location `oldId` after location `deletedId` was removed:
+// IDs above the deleted one move down by one, the others stay the same.
+int Graph::shiftedId(int oldId, int deletedId)
+{
+    return oldId > deletedId ? oldId - 1 : oldId;
 }
 
 bool Graph::hasLocation(int id) const
@@ -163,14 +190,6 @@ int Graph::locationCount() const
 int Graph::getNextId() const
 {
     return nextId;
-}
-
-void Graph::setNextId(int id)
-{
-    // Only move forward: going back could give a new location an old ID.
-    if (id > nextId) {
-        nextId = id;
-    }
 }
 
 // ===== Roads =====

@@ -270,20 +270,37 @@ void deleteLocation(Graph& city)
 
     string name = city.getName(id);
     size_t roads = city.getNeighbors(id).size();
+    int highestId = city.getLocationIds().back();
     printBlankLine();
     cout << "  " << paint("[DELETE]", Color::Error) << " "
          << paint("\"" + name + "\" and its " + to_string(roads) + " road(s) will be deleted.",
                   Color::Error)
          << "\n";
+    if (id < highestId) {
+        printHint("The locations with IDs " + to_string(id + 1) + " to " + to_string(highestId) +
+                  " will then move down by one ID.");
+    }
     if (!readYes("Are you sure? (y/n): ")) {
         printInfo("Nothing was deleted.");
         return;
     }
 
+    // Deleting and saving belong together: if the city cannot be saved,
+    // the deletion is undone so the program and the files stay the same.
+    Graph before = city;
     city.removeLocation(id);
+    if (!saveCity(city, locationsFile, roadsFile, nextIdFile)) {
+        city = before;
+        printWarning("The data could not be saved to the data folder, so nothing was deleted.");
+        return;
+    }
     printSuccess("Location \"" + name + "\" and its " + to_string(roads) +
                  " road(s) were deleted.");
-    saveChanges(city);
+    if (id < highestId) {
+        printInfo("Locations " + to_string(id + 1) + " to " + to_string(highestId) +
+                  " now have IDs " + to_string(id) + " to " + to_string(highestId - 1) + ".");
+    }
+    printHint("Saved automatically to the data folder.");
 }
 
 // ===== Roads =====

@@ -65,6 +65,10 @@ static void createFolderFor(const string& file)
 
 // ===== Saving =====
 
+// Saving is done in two steps so that a failed save never leaves a mix of
+// old and new files: first all three files are written to temporary files
+// ("locations.csv.tmp", ...). Only if all three were written completely are
+// they renamed to the real names, replacing the old files.
 bool saveCity(const Graph& city, const string& locationsFile, const string& roadsFile,
               const string& nextIdFile)
 {
@@ -72,20 +76,20 @@ bool saveCity(const Graph& city, const string& locationsFile, const string& road
     createFolderFor(roadsFile);
     createFolderFor(nextIdFile);
 
-    ofstream locations(locationsFile);
-    if (!locations) {
-        return false;
-    }
+    const string locationsTemp = locationsFile + ".tmp";
+    const string roadsTemp = roadsFile + ".tmp";
+    const string nextIdTemp = nextIdFile + ".tmp";
+    error_code error;   // receives problems instead of stopping the program
+
+    // Step 1: write the temporary files.
+    ofstream locations(locationsTemp);
     locations << "id,name\n";
     for (int id : city.getLocationIds()) {
         locations << id << "," << city.getName(id) << "\n";
     }
     locations.close();
 
-    ofstream roads(roadsFile);
-    if (!roads) {
-        return false;
-    }
+    ofstream roads(roadsTemp);
     // setprecision(15) keeps distances such as 2.35 exactly as typed.
     roads << setprecision(15);
     roads << "from,to,distance\n";
@@ -94,14 +98,35 @@ bool saveCity(const Graph& city, const string& locationsFile, const string& road
     }
     roads.close();
 
-    ofstream nextId(nextIdFile);
-    if (!nextId) {
-        return false;
-    }
+    ofstream nextId(nextIdTemp);
     nextId << city.getNextId() << "\n";
     nextId.close();
 
-    return !locations.fail() && !roads.fail() && !nextId.fail();
+    if (locations.fail() || roads.fail() || nextId.fail()) {
+        // Something could not be written: keep the old files unchanged.
+        filesystem::remove(locationsTemp, error);
+        filesystem::remove(roadsTemp, error);
+        filesystem::remove(nextIdTemp, error);
+        return false;
+    }
+
+    // Step 2: replace the old files (rename overwrites the target).
+    filesystem::rename(locationsTemp, locationsFile, error);
+    if (!error) {
+        filesystem::rename(roadsTemp, roadsFile, error);
+    }
+    if (!error) {
+        filesystem::rename(nextIdTemp, nextIdFile, error);
+    }
+    if (error) {
+        // A file could not be replaced: remove the temporary files that are left.
+        error_code ignored;
+        filesystem::remove(locationsTemp, ignored);
+        filesystem::remove(roadsTemp, ignored);
+        filesystem::remove(nextIdTemp, ignored);
+        return false;
+    }
+    return true;
 }
 
 // ===== Loading =====
@@ -215,12 +240,14 @@ static void loadNextId(Graph& city, const string& file, vector<string>& messages
     if (!textToInt(line, savedId) || savedId <= 0) {
         messages.push_back(file + ": the next ID must be a positive whole number. "
                            "The next ID is the highest location ID + 1.");
-    } else if (savedId < city.getNextId()) {
-        messages.push_back(file + ": the next ID " + to_string(savedId) +
-                           " is already used by a location. The next ID is the highest location ID + 1.");
-    } else {
-        city.setNextId(savedId);
+    } else if (savedId != city.getNextId()) {
+        // IDs are sequential, so the next ID must be "highest ID + 1".
+        // (Files saved by an older version could contain a larger value.)
+        messages.push_back(file + ": the saved next ID " + to_string(savedId) +
+                           " does not follow the location IDs. The next ID is the highest location ID + 1 (" +
+                           to_string(city.getNextId()) + ").");
     }
+    // Otherwise the saved value is already correct: nothing to do.
 }
 
 void loadCity(Graph& city, const string& locationsFile, const string& roadsFile,

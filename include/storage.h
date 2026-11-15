@@ -10,8 +10,8 @@
 //
 // The first line of each CSV file is a header ("id,name" or "from,to,distance")
 // and is skipped when loading. A file without a header is also accepted.
-// next_id.txt holds the ID for the next new location, so that the ID of a
-// deleted location is never used again, even after restarting the program.
+// next_id.txt holds the ID for the next new location. Because location IDs
+// are renumbered after a deletion, it is always the highest ID + 1.
 // This file does not print anything; problems are returned as messages so
 // that the menu program can show them.
 
@@ -25,6 +25,8 @@
 
 // Writes all locations, all roads and the next location ID to the three files.
 // Creates the folder (for example "data") if it does not exist.
+// The files are first written as temporary files and only replace the old
+// files when all three were written, so a failed save keeps the old files.
 // Returns false if a file could not be written.
 bool saveCity(const Graph& city, const std::string& locationsFile, const std::string& roadsFile,
               const std::string& nextIdFile);
@@ -33,8 +35,8 @@ bool saveCity(const Graph& city, const std::string& locationsFile, const std::st
 // Location IDs are kept exactly as saved.
 // Invalid or duplicate lines are skipped, and a message is added to
 // `messages` for each problem. A missing file is not an error: the city
-// simply stays empty. If next_id.txt is missing or invalid, the next ID
-// becomes "highest location ID + 1" (a message explains this).
+// simply stays empty. The next ID is always "highest location ID + 1"; if
+// next_id.txt is missing, invalid or different, a message explains this.
 void loadCity(Graph& city, const std::string& locationsFile, const std::string& roadsFile,
               const std::string& nextIdFile, std::vector<std::string>& messages);
 

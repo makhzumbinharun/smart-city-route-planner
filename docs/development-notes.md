@@ -97,7 +97,7 @@ struct Road { int from; int to; double distance; };  // a road with both ends
 class Graph {
     map<int, string>       names;      // location ID -> name,  e.g. 1 -> "BUBT"
     map<int, vector<Edge>> adjacency;  // location ID -> list of its roads
-    int nextId = 1;                    // ID for the next new location
+    int nextId = 1;                    // ID for the next new location (highest ID + 1)
 };
 ```
 
@@ -126,9 +126,9 @@ class Graph {
 | `getRoads()` | Every road once: each road is stored twice, so only the copy where `from < to` is kept. |
 | `roadCount()` | Number of roads. |
 | `addLocationWithId(id, name)` | Used only when loading: adds a location with its **saved** ID, so roads still point to the right locations. Moves `nextId` past the highest ID. |
-| `getNextId()`, `setNextId(id)` | Read the next ID (for saving) and restore it (when loading). `setNextId` can only **raise** the value, so an ID is never reused. |
+| `getNextId()` | The ID the next new location will get: the highest ID + 1 (1 for an empty city). Saved in `next_id.txt`. (`setNextId` was removed in S9: the value always follows from the IDs.) |
 | `renameLocation(id, newName)` | Trims the new name and changes it. Refused if the location is missing, the name is empty, or **another** location already has it (ignoring case); a location may change the capitals of its own name. |
-| `removeLocation(id)` | Each road is stored in two lists, so it first removes this location from every **neighbour's** list, then erases the location and its own list. |
+| `removeLocation(id)` | Each road is stored in two lists, so it first removes this location from every **neighbour's** list, then erases the location and its own list. Then it **renumbers** (S9): it builds new `names` and `adjacency` maps in which every ID greater than `id` is one lower (`shiftedId()`), both for the locations and for the `to` end of every edge, and sets `nextId` to the highest ID + 1. Distances and connections are unchanged. O(V log V + E). |
 | `updateRoad(from, to, distance)` | Changes the distance in **both** copies of the road. Refused if the road does not exist or the distance is not valid (`isValidDistance`). |
 | `removeRoad(from, to)` | Removes **both** copies of the road. The locations are kept. |
 
@@ -138,8 +138,8 @@ Functions marked `const` only *read* the graph; they never change it.
 
 | Function | What it does |
 |---|---|
-| `saveCity(city, locationsFile, roadsFile, nextIdFile)` | Creates the `data` folder if needed, then writes a header line and one line per location (`id,name`) and per road (`from,to,distance`), and the next location ID into `next_id.txt`. Returns `false` if a file cannot be written. |
-| `loadCity(city, locationsFile, roadsFile, nextIdFile, messages)` | Loads locations **first** (roads refer to their IDs), then roads, then the next ID. Each line is split at commas and checked; a bad line is skipped and a message with its line number is added to `messages`. A missing file just leaves the city empty. The saved next ID is used only if it is larger than "highest ID + 1"; otherwise a note is added. |
+| `saveCity(city, locationsFile, roadsFile, nextIdFile)` | Creates the `data` folder if needed, then writes a header line and one line per location (`id,name`) and per road (`from,to,distance`), and the next location ID into `next_id.txt`. All three are first written to `.tmp` files; only if all three were written completely are they renamed over the real files. Returns `false` (and removes the `.tmp` files, keeping the old files) if a file cannot be written or replaced. |
+| `loadCity(city, locationsFile, roadsFile, nextIdFile, messages)` | Loads locations **first** (roads refer to their IDs), then roads, then the next ID. Each line is split at commas and checked; a bad line is skipped and a message with its line number is added to `messages`. A missing file just leaves the city empty. The next ID is always "highest ID + 1"; if `next_id.txt` is missing, invalid or holds a different value (for example a larger value saved by an older version), a note is added. |
 | `splitByComma`, `textToInt`, `textToDouble` | Small helpers used only inside `storage.cpp`. |
 | `findDataFolder(candidates)` | Returns the first folder in the list that contains `locations.csv` or a `sample` subfolder; otherwise the first folder. `main()` passes `data` (current folder), then `data` next to the program and in its parent folder, so the program also finds the project data when started from inside `build-mingw`. |
 | `initializeFromSample(sampleFolder, locationsFile, roadsFile, nextIdFile)` | First run: copies the three sample files only if **none** of the working files exists (`copy_options::none` never overwrites). Returns `true` if it copied them. If a copy fails, the files copied in that call are removed again. |
@@ -186,7 +186,7 @@ See `docs/algorithms.md` for step-by-step explanations and examples.
 | `addRoad(city)` | Shows the locations, asks for two IDs and a distance, checks each rule with a clear message, then adds the road. |
 | `showRoads(city)` | Prints a table: from, to, distance. |
 | `showNetwork(city)` | Prints the adjacency list: each location, then the locations it connects to. |
-| `renameLocation(city)`, `deleteLocation(city)` | Ask for a location ID (and a new name, or a y/n confirmation), check it, then call the `Graph` function. |
+| `renameLocation(city)`, `deleteLocation(city)` | Ask for a location ID (and a new name, or a y/n confirmation), check it, then call the `Graph` function. `deleteLocation` also says which IDs will move down, keeps a copy of the city, and restores that copy if saving fails, so the deletion and renumbering happen completely or not at all. |
 | `updateRoad(city)`, `deleteRoad(city)` | Show the roads, ask for the road's two location IDs (`readExistingRoad`), then call the `Graph` function. |
 | `isValidName(city, name, ownId)` | The name rules shared by add and rename (not empty, no comma, not used by another location, ignoring upper/lower case). The name is trimmed before this check. |
 | `saveChanges(city)` | Called after every successful change; saves the city and prints `Saved automatically to the data folder.` or a warning. |
@@ -212,7 +212,7 @@ also refuses invalid data as a safety net.
 renaming and deleting locations; adding, updating and deleting roads; and
 saving and loading (empty city, full city with ID gaps, missing files, and a
 file with 16 invalid lines, files without a header, an impossible save folder,
-and ID persistence after deleting and restarting); and BFS and DFS (empty city,
+and the IDs after deleting and restarting); and BFS and DFS (empty city,
 unknown start, single location, known visiting orders on a network with a
 cycle, disconnected parts, each location visited once, and the same result
 after changes and after saving/loading); and Dijkstra (empty city, single
@@ -249,7 +249,14 @@ a square (all centres, two diameter pairs), separate parts of unequal size,
 isolated locations, IDs with gaps, changes to roads and locations, a rounding
 tie (0.1 + 0.2 + 0.4 against 0.15 + 0.15 + 0.4) and the sample city.
 `facilityMatchesTable()` recalculates everything from the Floyd–Warshall
-table and compares: 400 checks in total. The save/load tests write
+table and compares. The S9 tests check ID renumbering: deleting the first,
+a middle and the last location, the only location, and an unknown ID; the
+road ends after renumbering; adding, updating and deleting roads with the new
+IDs; the exact contents of the three files and a restart; a failed save that
+keeps the old files; and BFS, DFS, Dijkstra, Kruskal, Floyd–Warshall and the
+best facility location on the sample city after deleting locations 1, 5 and
+10, compared with a city built directly with the expected IDs: 456 checks in
+total. The save/load tests write
 temporary files into a `test_data` folder. `main()` returns 1 if anything failed, so `ctest` reports
 the failure.
 
@@ -280,6 +287,9 @@ the failure.
 | 2026-11-08 | A disconnected network has no single centre and an infinite diameter; the centre, radius and diameter are calculated for each connected part, and isolated locations are reported separately | Treating ∞ as 0 or as a normal number would give a wrong centre; each part needs its own facility |
 | 2026-11-08 | Eccentricities and distances within 1e-9 km (`DISTANCE_TOLERANCE`) count as equal; diameter pairs are listed once with the smaller ID first | Rounding errors (0.1 + 0.2 ≠ 0.3) must not hide ties; deterministic output |
 | 2026-11-11 | MIT License added (`LICENSE`, copyright holder Quad Core); README rewritten with WinLibs installation, PowerShell build steps for both generators and test scenarios | Requested by the team lead; a public repository needs a clear license and reliable setup instructions |
+| 2026-11-15 | S9: deleting a location renumbers the locations with higher IDs (each moves down by one) and updates every road end; `next_id.txt` is always the highest ID + 1 | Requested by the team lead: IDs stay sequential (1, 2, 3, ...), so they are easy to read and type; replaces the earlier "IDs are never reused" rule |
+| 2026-11-15 | Roads keep no ID of their own; a road is identified by its two location IDs | No road ID field is needed: renumbering the location IDs also updates the roads, and `roads.csv` is rewritten in ID order |
+| 2026-11-15 | Saving writes temporary files first and then renames them; the menu restores the previous city if saving a deletion fails | A failed save must not leave a mix of renumbered and old files, or a city in memory that differs from the files |
 | 2026-11-04 | A location is an automatic ID plus a name | IDs never need to be typed when adding; no extra fields |
 | 2026-11-04 | One weight per road: distance in km | Used by both Dijkstra and Kruskal; easy to explain |
 | 2026-11-04 | At most one road between two locations; roads are two-way | Simple undirected graph |
@@ -292,7 +302,7 @@ the failure.
 | 2026-11-04 | CSV code in its own file (`storage.cpp`), not in `Graph` or the menu | `Graph` stays free of input/output; file handling can be explained and tested separately |
 | 2026-11-04 | Save automatically after every successful change | No "save" option to forget; data survives if the window is closed |
 | 2026-11-04 | Location IDs are saved and kept when loading (`addLocationWithId`) | Roads in `roads.csv` refer to location IDs |
-| 2026-11-04 | The next location ID is saved in `data/next_id.txt` | IDs of deleted locations are never reused, even after a restart; a missing or invalid file falls back safely to "highest ID + 1" |
+| 2026-11-04 | The next location ID is saved in `data/next_id.txt` | Originally: IDs of deleted locations were never reused, even after a restart (replaced by renumbering in S9); a missing or invalid file falls back safely to "highest ID + 1" |
 | 2026-11-04 | Invalid CSV lines are skipped with a message, not fatal | One bad line should not lose the rest of the city |
 | 2026-11-04 | Working files `data/locations.csv` and `data/roads.csv` are not in Git; sample files are in `data/sample/` | Test changes do not end up in commits; everyone can start from the same sample |
 | 2026-11-04 | Deleting a location asks for confirmation (y/n) | It also deletes all its roads |
@@ -300,7 +310,7 @@ the failure.
 | 2026-11-04 | DFS uses recursion | Shortest and clearest code for students; the city networks in this project are small |
 | 2026-11-04 | Dijkstra uses `priority_queue` with `greater<>` and skips outdated entries | Standard C++ min-priority queue; no extra data structure needed to update priorities |
 | 2026-11-04 | Dijkstra replaces a parent only for a strictly shorter distance | With equally short routes, the same route is always chosen (also after saving and loading) |
-| 2026-11-04 | Kruskal uses a DSU with `map`s, path compression and union by rank | Location IDs are not 0..V-1 (deleted IDs leave gaps), so maps are simpler than arrays |
+| 2026-11-04 | Kruskal uses a DSU with `map`s, path compression and union by rank | Location IDs are not 0..V-1 (they start at 1, and files edited by hand can contain gaps), so maps are simpler than arrays |
 | 2026-11-04 | A disconnected network gives a Minimum Spanning Forest, with the number of components | Kruskal only uses existing roads and never invents new ones |
 | 2026-11-04 | Kruskal sorts equal distances by location IDs | The same roads are always selected (also after saving and loading) |
 | 2026-11-04 | Dijkstra returns a `RouteResult` struct (found, distance, path) | The menu (and a future GUI) can show the result without the algorithm printing anything |
@@ -324,6 +334,7 @@ the failure.
 | S8.1 | Floyd–Warshall all-pairs shortest paths (menu option 14) | Done |
 | S8.2 | Consistency and quality audit (route safety net, milestone history) | Done (committed together with S8.1) |
 | S8.3 | Best facility location: eccentricity, network centre and diameter (menu option 15) | Done |
+| S9 | Location IDs renumbered after a deletion, safe saving with temporary files, Faculty Information in the README | Done |
 
 ---
 
