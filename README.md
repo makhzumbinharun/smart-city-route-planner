@@ -454,8 +454,8 @@ Each screen asks only for the IDs it needs and explains invalid input. The
 | [docs/algorithms.md](docs/algorithms.md) | Graph representation and every algorithm, with steps, worked examples and complexity |
 | [docs/user-guide.md](docs/user-guide.md) | Building (Command Prompt) and using every menu option |
 | [docs/development-notes.md](docs/development-notes.md) | Toolchain, code walkthrough, tests, Git workflow, decision log and milestones |
-| [Project proposal (PDF)](docs/proposal/smart-city-route-planner-proposal-revised.pdf) | Revised project proposal |
-| [Project proposal (Word)](docs/proposal/smart-city-route-planner-proposal-revised.docx) | Revised project proposal, editable version |
+| [Project proposal (PDF)](docs/proposal/PROJECT%20PROPOSAL%20OF%20SMART%20CITY%20ROUTE%20%26%20INFRASTRUCTURE%20PLANNER%20BY%20QUAD%20CORE_revised.pdf) | Revised project proposal |
+| [Project proposal (Word)](docs/proposal/PROJECT%20PROPOSAL%20OF%20SMART%20CITY%20ROUTE%20%26%20INFRASTRUCTURE%20PLANNER%20BY%20QUAD%20CORE_revised.docx) | Revised project proposal, editable version |
 
 ## Team
 
