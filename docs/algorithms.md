@@ -37,7 +37,7 @@ BUBT **and** in the list of Mirpur 10.
 | `names` | `std::map<int, std::string>` | location ID → name |
 | `adjacency` | `std::map<int, std::vector<Edge>>` | location ID → its roads |
 | `Edge` | `struct { int to; double distance; }` | one road, seen from one location |
-| `nextId` | `int` | the ID given to the next new location |
+| `nextId` | `int` | the ID given to the next new location (highest ID + 1) |
 
 **Why an adjacency list?** A city has many locations but each location
 connects to only a few others. An adjacency list stores only the roads that
@@ -55,8 +55,8 @@ most of them empty.
 | Rename location | Check the name is not used, then replace it | O(V) |
 | Update road distance | Find the road in both lists and change both copies | O(log V + deg) |
 | Delete road | Remove the road from both lists | O(log V + deg) |
-| Delete location | For each of its roads, remove the copy in the neighbour's list; then erase the location | O(deg × deg′) where deg′ is the largest neighbour degree |
-| Save to CSV | Write every location and every road once | O(V + E) |
+| Delete location | For each of its roads, remove the copy in the neighbour's list; erase the location; then renumber: every higher ID (and every road end pointing to it) moves down by one, so the IDs stay 1, 2, 3, ... | O(deg × deg′) for the removal (deg′ = largest neighbour degree) + O(V log V + E) for the renumbering |
+| Save to CSV | Write every location and every road once (to temporary files, then rename them) | O(V + E) |
 | Load from CSV | Read each line, check it, add it | O(V² + E·deg) in the worst case, because each line is checked for duplicates |
 
 ## 2. Breadth-First Search (BFS)
@@ -452,7 +452,7 @@ FloydWarshall(city):
 
 | Name | Type | Meaning |
 |---|---|---|
-| `ids`, `indexOf` | `vector<int>`, `map<int, int>` | row/column number ↔ location ID (IDs can have gaps such as 1, 3, 5, so the ID itself cannot be the row number) |
+| `ids`, `indexOf` | `vector<int>`, `map<int, int>` | row/column number ↔ location ID (IDs start at 1, and a hand-edited file can even have gaps such as 1, 3, 5, so the ID itself cannot be the row number) |
 | `dist` | `vector<vector<double>>` (V × V) | shortest distance; `INFINITY` = no route |
 | `next` | `vector<vector<int>>` (V × V) | the first stop after i on a shortest route to j; `-1` = no route |
 | `AllPairsResult` | `struct { ids, indexOf, dist, next }` | the answer returned to the menu |

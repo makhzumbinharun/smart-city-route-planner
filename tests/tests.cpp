@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -140,22 +141,25 @@ void testRemoveLocation()
     cout << "\nDelete location\n";
     Graph city = makeSmallCity();
 
+    // IDs before: 1 BUBT, 2 Mirpur 10, 3 Farmgate, 4 Uttara.
     check(city.removeLocation(2), "delete Mirpur 10 (ID 2)");
-    check(!city.hasLocation(2), "location 2 no longer exists");
     check(city.locationCount() == 3, "3 locations remain");
-    check(!city.hasRoad(1, 2) && !city.hasRoad(2, 1), "road BUBT - Mirpur 10 is gone");
-    check(!city.hasRoad(3, 2), "road Farmgate - Mirpur 10 is gone from Farmgate's list");
-    check(city.hasRoad(1, 3), "the unrelated road BUBT - Farmgate is kept");
-    check(city.roadCount() == 1, "only 1 road remains");
-    check(city.getNeighbors(1).size() == 1, "BUBT now has 1 neighbour");
-    check(city.getNeighbors(3).size() == 1, "Farmgate now has 1 neighbour");
+    check(!city.nameExists("Mirpur 10"), "Mirpur 10 no longer exists");
+    check(city.getName(1) == "BUBT" && city.getName(2) == "Farmgate" && city.getName(3) == "Uttara" &&
+              !city.hasLocation(4),
+          "renumbered: 1 BUBT, 2 Farmgate (was 3), 3 Uttara (was 4)");
+    check(city.roadCount() == 1, "the 2 roads of Mirpur 10 are gone, 1 road remains");
+    check(city.hasRoad(1, 2) && city.hasRoad(2, 1),
+          "the unrelated road BUBT - Farmgate is kept, now as 1 - 2 (was 1 - 3)");
+    check(city.getRoads()[0].distance == 6.0, "its distance (6 km) is kept");
+    check(city.getNeighbors(1).size() == 1 && city.getNeighbors(2).size() == 1,
+          "BUBT and Farmgate have 1 neighbour each");
 
-    check(!city.removeLocation(2), "deleting it again is refused");
     check(!city.removeLocation(99), "deleting an unknown location is refused");
-    check(city.removeLocation(4), "a location without roads can be deleted");
+    check(city.removeLocation(3), "a location without roads (Uttara) can be deleted");
 
-    check(city.addLocation("Gulshan") == 5, "a new location gets a new ID (5), not a deleted one");
-    check(city.addLocation("Mirpur 10") == 6, "the deleted name can be used again");
+    check(city.addLocation("Gulshan") == 3, "a new location gets the next sequential ID (3)");
+    check(city.addLocation("Mirpur 10") == 4, "the deleted name can be used again (ID 4)");
 }
 
 void testUpdateRoad()
@@ -216,11 +220,11 @@ void testNextId()
     city.addLocation("BUBT");
     check(city.getNextId() == 2, "after one location the next ID is 2");
 
-    city.setNextId(10);
-    check(city.getNextId() == 10, "setNextId can raise the next ID to 10");
-    city.setNextId(4);
-    check(city.getNextId() == 10, "setNextId cannot lower the next ID");
-    check(city.addLocation("Uttara") == 10, "the next location gets ID 10");
+    city.addLocationWithId(10, "Uttara");
+    check(city.getNextId() == 11, "a loaded location with ID 10 moves the next ID to 11");
+    city.removeLocation(10);
+    check(city.getNextId() == 2, "after deleting it, the next ID is the highest ID + 1 again (2)");
+    check(city.addLocation("Gulshan") == 2, "the next location gets ID 2");
     check(city.addLocation("\t ") == -1, "a name of only spaces and tabs is refused");
 }
 
@@ -260,9 +264,9 @@ void testSaveAndLoadCity()
 {
     cout << "\nSave and load a city\n";
     Graph city = makeSmallCity();
-    city.removeLocation(2);              // leaves IDs 1, 3 and 4 (a gap at 2)
-    city.addLocation("Gulshan");         // ID 5
-    city.addRoad(3, 5, 7.25);
+    city.removeLocation(2);              // renumbers: 1 BUBT, 2 Farmgate, 3 Uttara
+    city.addLocation("Gulshan");         // ID 4
+    city.addRoad(2, 4, 7.25);
     check(saveCity(city, TEST_LOCATIONS, TEST_ROADS, TEST_NEXT_ID), "the city is saved");
 
     Graph loaded;
@@ -273,13 +277,12 @@ void testSaveAndLoadCity()
     check(loaded.roadCount() == 2, "2 roads are loaded");
 
     vector<int> ids = loaded.getLocationIds();
-    check(ids.size() == 4 && ids[0] == 1 && ids[1] == 3 && ids[2] == 4 && ids[3] == 5,
-          "location IDs are kept exactly (1, 3, 4, 5)");
-    check(loaded.getName(5) == "Gulshan", "names are kept (ID 5 is Gulshan)");
-    check(loaded.hasRoad(1, 3) && loaded.hasRoad(3, 1), "road BUBT - Farmgate is loaded in both directions");
-    check(loaded.hasRoad(3, 5), "road Farmgate - Gulshan is loaded");
+    check(ids == vector<int>({1, 2, 3, 4}), "location IDs are kept exactly (1, 2, 3, 4)");
+    check(loaded.getName(4) == "Gulshan", "names are kept (ID 4 is Gulshan)");
+    check(loaded.hasRoad(1, 2) && loaded.hasRoad(2, 1), "road BUBT - Farmgate is loaded in both directions");
+    check(loaded.hasRoad(2, 4), "road Farmgate - Gulshan is loaded");
     check(loaded.getRoads()[1].distance == 7.25, "the distance 7.25 is loaded exactly");
-    check(loaded.addLocation("Banani") == 6, "after loading, the next new location gets ID 6");
+    check(loaded.addLocation("Banani") == 5, "after loading, the next new location gets ID 5");
 }
 
 void testLoadMissingFiles()
@@ -294,16 +297,16 @@ void testLoadMissingFiles()
     check(city.addLocation("BUBT") == 1, "a new empty city starts at ID 1");
 }
 
-void testIdsNotReusedAfterRestart()
+void testIdsAfterDeleteAndRestart()
 {
-    cout << "\nIDs are not reused after deleting and restarting\n";
+    cout << "\nIDs stay sequential after deleting and restarting\n";
 
-    // First run: add three locations, delete the one with the highest ID.
+    // First run: add three locations, delete the middle one.
     Graph firstRun;
     firstRun.addLocation("BUBT");        // ID 1
     firstRun.addLocation("Mirpur 10");   // ID 2
     firstRun.addLocation("Farmgate");    // ID 3
-    firstRun.removeLocation(3);
+    firstRun.removeLocation(2);          // Farmgate becomes ID 2
     check(saveCity(firstRun, TEST_LOCATIONS, TEST_ROADS, TEST_NEXT_ID), "the city is saved");
 
     // Second run ("restart"): load the files into a new Graph.
@@ -311,21 +314,22 @@ void testIdsNotReusedAfterRestart()
     vector<string> messages;
     loadCity(secondRun, TEST_LOCATIONS, TEST_ROADS, TEST_NEXT_ID, messages);
     check(messages.empty(), "there are no warnings");
-    check(secondRun.locationCount() == 2, "2 locations are loaded");
-    check(secondRun.getNextId() == 4, "the saved next ID (4) is loaded");
-    check(secondRun.addLocation("Gulshan") == 4, "the new location gets ID 4, not the deleted ID 3");
+    check(secondRun.locationCount() == 2 && secondRun.getName(2) == "Farmgate",
+          "2 locations are loaded; Farmgate keeps its new ID 2");
+    check(secondRun.getNextId() == 3, "the saved next ID (3) is loaded");
+    check(secondRun.addLocation("Gulshan") == 3, "the new location gets the next sequential ID 3");
 
     // Delete every location, save, and restart again.
     secondRun.removeLocation(1);
-    secondRun.removeLocation(2);
-    secondRun.removeLocation(4);
+    secondRun.removeLocation(1);
+    secondRun.removeLocation(1);
     saveCity(secondRun, TEST_LOCATIONS, TEST_ROADS, TEST_NEXT_ID);
 
     Graph thirdRun;
     messages.clear();
     loadCity(thirdRun, TEST_LOCATIONS, TEST_ROADS, TEST_NEXT_ID, messages);
-    check(thirdRun.locationCount() == 0, "the city is empty after deleting everything");
-    check(thirdRun.addLocation("Uttara") == 5, "even an emptied city continues with ID 5");
+    check(thirdRun.locationCount() == 0 && messages.empty(), "the city is empty after deleting everything");
+    check(thirdRun.addLocation("Uttara") == 1, "an emptied city starts again with ID 1");
 }
 
 void testInvalidNextIdFile()
@@ -337,9 +341,11 @@ void testInvalidNextIdFile()
 
     // Each case: the content of next_id.txt, the expected next ID,
     // and whether a warning is expected.
+    // A larger value such as 10 (saved by an older version) is not used
+    // either: the next ID always follows the location IDs.
     vector<string> contents = {"abc", "", "0", "-3", "3", "6x", "10", "6"};
-    vector<int> expectedIds = {6, 6, 6, 6, 6, 6, 10, 6};
-    vector<bool> expectWarning = {true, true, true, true, true, true, false, false};
+    vector<int> expectedIds = {6, 6, 6, 6, 6, 6, 6, 6};
+    vector<bool> expectWarning = {true, true, true, true, true, true, true, false};
 
     for (size_t i = 0; i < contents.size(); i++) {
         writeFile(TEST_NEXT_ID, contents[i] + "\n");
@@ -519,17 +525,20 @@ void testTraversalAfterChanges()
     city.addRoad(6, 7, 2.0);   // joins 6 to the part 7-8
     check(bfs(city, 6) == vector<int>({6, 7, 8}), "after adding road 6-7, BFS from 6 gives 6, 7, 8");
 
-    city.removeLocation(2);   // removes roads 1-2 and 2-4
-    check(bfs(city, 1) == vector<int>({1, 3, 4}), "after deleting location 2, BFS from 1 gives 1, 3, 4");
-    check(dfs(city, 4) == vector<int>({4, 3, 1}), "after deleting location 2, DFS from 4 gives 4, 3, 1");
-    check(bfs(city, 2).empty(), "BFS from the deleted location 2 returns nothing");
+    // Deleting location 2 removes roads 1-2 and 2-4 and renumbers 3..8 to 2..7:
+    // the old 1-3-4 part is now 1-2-3, and the part 6-7-8 is now 5-6-7.
+    city.removeLocation(2);
+    check(bfs(city, 1) == vector<int>({1, 2, 3}), "after deleting location 2, BFS from 1 gives 1, 2, 3 (was 1, 3, 4)");
+    check(dfs(city, 3) == vector<int>({3, 2, 1}), "after deleting location 2, DFS from 3 gives 3, 2, 1 (was 4, 3, 1)");
+    check(bfs(city, 5) == vector<int>({5, 6, 7}), "the renumbered part 5-6-7 (was 6-7-8) is still connected");
+    check(bfs(city, 8).empty(), "BFS from ID 8, which no longer exists, returns nothing");
 
     // The order does not depend on the order in which roads were loaded.
     check(saveCity(city, TEST_LOCATIONS, TEST_ROADS, TEST_NEXT_ID), "the changed city is saved");
     Graph loaded;
     vector<string> messages;
     loadCity(loaded, TEST_LOCATIONS, TEST_ROADS, TEST_NEXT_ID, messages);
-    check(bfs(loaded, 1) == bfs(city, 1) && dfs(loaded, 4) == dfs(city, 4),
+    check(bfs(loaded, 1) == bfs(city, 1) && dfs(loaded, 3) == dfs(city, 3),
           "BFS and DFS give the same order after saving and loading");
 }
 
@@ -1369,18 +1378,32 @@ void testFloydWarshallDisconnectedAndGaps()
           "locations in different parts are unreachable (INFINITY)");
     check(floydMatchesDijkstra(city), "separate parts: every pair agrees with Dijkstra");
 
-    // ID gaps: delete locations 2 and 4, so the IDs are 1, 3, 5, 6.
+    // Deleting locations renumbers them: delete 2, then 3 (the old 4).
+    // Left: 1 (D1), 2 (was 3), 3 (was 5), 4 (was 6); road 1-3 is now 1-2.
     city.removeLocation(2);
-    city.removeLocation(4);
-    AllPairsResult gaps = floydWarshall(city);
+    city.removeLocation(3);
+    AllPairsResult renumbered = floydWarshall(city);
+    check(renumbered.ids == vector<int>({1, 2, 3, 4}), "after deleting two locations the rows are 1, 2, 3, 4");
+    check(nearlyEqual(tableDistance(renumbered, 1, 2), 3.0) && tableDistance(renumbered, 3, 4) == INFINITY,
+          "1 -> 2 (was 1 -> 3) uses the direct 3 km road; 3 and 4 are still unconnected");
+    check(floydMatchesDijkstra(city), "after renumbering: every pair agrees with Dijkstra");
+
+    // ID gaps can still come from saved files (loaded with addLocationWithId).
+    Graph gapped;
+    gapped.addLocationWithId(1, "G1");
+    gapped.addLocationWithId(3, "G3");
+    gapped.addLocationWithId(5, "G5");
+    gapped.addLocationWithId(6, "G6");
+    gapped.addRoad(1, 3, 3.0);
+    AllPairsResult gaps = floydWarshall(gapped);
     check(gaps.ids == vector<int>({1, 3, 5, 6}), "IDs with gaps: the rows are 1, 3, 5, 6");
     check(gaps.indexOf.at(5) == 2 && gaps.indexOf.at(6) == 3, "indexOf maps ID 5 -> row 2 and ID 6 -> row 3");
-    check(nearlyEqual(tableDistance(gaps, 1, 3), 3.0), "after deleting location 2, 1 -> 3 uses the direct 3 km road");
-    city.addRoad(5, 6, 1.5);
-    city.addRoad(3, 5, 2.0);
-    check(nearlyEqual(tableDistance(floydWarshall(city), 1, 6), 6.5),
+    check(nearlyEqual(tableDistance(gaps, 1, 3), 3.0), "IDs with gaps: 1 -> 3 uses the direct 3 km road");
+    gapped.addRoad(5, 6, 1.5);
+    gapped.addRoad(3, 5, 2.0);
+    check(nearlyEqual(tableDistance(floydWarshall(gapped), 1, 6), 6.5),
           "new roads 3-5 and 5-6: 1 -> 6 is 3 + 2 + 1.5 = 6.5 km");
-    check(floydMatchesDijkstra(city), "IDs with gaps: every pair agrees with Dijkstra");
+    check(floydMatchesDijkstra(gapped), "IDs with gaps: every pair agrees with Dijkstra");
 }
 
 void testFloydWarshallAfterChanges()
@@ -1404,10 +1427,11 @@ void testFloydWarshallAfterChanges()
     // 5 -> 6 -> 4 -> 2 -> 1 = 1 + 1 + 1 + 4 km (shorter than via 3 or the 10 km road)
     check(nearlyEqual(tableDistance(floydWarshall(city), 5, 1), 7.0) && floydMatchesDijkstra(city),
           "after adding location 6 with roads to 4 and 5: 5 -> 1 is 7 km");
-    city.removeLocation(4);
+    city.removeLocation(4);   // 5 becomes 4 and 6 becomes 5
     AllPairsResult table = floydWarshall(city);
-    check(table.indexOf.count(4) == 0 && tableDistance(table, 5, 1) == INFINITY && floydMatchesDijkstra(city),
-          "after deleting location 4: it is gone and 5 can no longer reach 1");
+    check(table.ids == vector<int>({1, 2, 3, 4, 5}) && tableDistance(table, 4, 1) == INFINITY &&
+              floydMatchesDijkstra(city),
+          "after deleting location 4: IDs 1-5 remain and the old 5 (now 4) can no longer reach 1");
 
     // Largest allowed distances: totals stay ordinary numbers.
     Graph far;
@@ -1663,16 +1687,32 @@ void testFacilityDisconnected()
               nearlyEqual(unevenResult.parts[0].diameter, 4.0),
           "the isolated location does not change the big part: centres {2, 3}, diameter 4 km");
 
-    // ID gaps: delete 2 and 4, so the IDs are 1, 3, 5, 6 (road 1-3 is left).
+    // Delete 2, then 3 (the old 4): left are 1, 2 (was 3), 3 (was 5), 4 (was 6),
+    // and the road 1-3 is now 1-2.
     city.removeLocation(2);
-    city.removeLocation(4);
-    FacilityResult gaps = bestFacilityLocation(floydWarshall(city));
+    city.removeLocation(3);
+    FacilityResult renumbered = bestFacilityLocation(floydWarshall(city));
+    check(renumbered.parts.size() == 3 && renumbered.parts[0].locations == vector<int>({1, 2}) &&
+              renumbered.parts[1].locations == vector<int>{3} && renumbered.parts[2].locations == vector<int>{4},
+          "after deleting two locations: parts {1, 2}, {3}, {4} (renumbered)");
+    check(renumbered.parts[0].centres == vector<int>({1, 2}) && nearlyEqual(renumbered.parts[0].diameter, 3.0),
+          "part {1, 2} has centres {1, 2} and diameter 3 km");
+    check(facilityMatchesTable(city), "after renumbering: agrees with the Floyd-Warshall table");
+
+    // ID gaps can still come from saved files (loaded with addLocationWithId).
+    Graph gapped;
+    gapped.addLocationWithId(1, "G1");
+    gapped.addLocationWithId(3, "G3");
+    gapped.addLocationWithId(5, "G5");
+    gapped.addLocationWithId(6, "G6");
+    gapped.addRoad(1, 3, 3.0);
+    FacilityResult gaps = bestFacilityLocation(floydWarshall(gapped));
     check(gaps.parts.size() == 3 && gaps.parts[0].locations == vector<int>({1, 3}) &&
               gaps.parts[1].locations == vector<int>{5} && gaps.parts[2].locations == vector<int>{6},
           "IDs with gaps: parts {1, 3}, {5}, {6}");
     check(gaps.parts[0].centres == vector<int>({1, 3}) && nearlyEqual(gaps.parts[0].diameter, 3.0),
           "IDs with gaps: part {1, 3} has centres {1, 3} and diameter 3 km");
-    check(facilityMatchesTable(city), "IDs with gaps agree with the Floyd-Warshall table");
+    check(facilityMatchesTable(gapped), "IDs with gaps agree with the Floyd-Warshall table");
 }
 
 void testFacilityAfterChanges()
@@ -1765,6 +1805,235 @@ void testFacilitySampleCity()
     check(facilityMatchesTable(city), "the sample city agrees with the Floyd-Warshall table");
 }
 
+// ===== Renumbering location IDs after a deletion =====
+
+// The example city: locations A..H (IDs 1..8) and six roads.
+Graph makeLetterCity()
+{
+    Graph city;
+    for (char letter : string("ABCDEFGH")) {
+        city.addLocation(string(1, letter));
+    }
+    city.addRoad(1, 2, 2.5);
+    city.addRoad(2, 3, 3.0);
+    city.addRoad(3, 6, 4.0);
+    city.addRoad(6, 7, 2.0);
+    city.addRoad(7, 8, 5.0);
+    city.addRoad(1, 8, 6.0);
+    return city;
+}
+
+// The names of all locations in ID order, e.g. "ABCDEGH".
+string nameList(const Graph& city)
+{
+    string text;
+    for (int id : city.getLocationIds()) {
+        text += city.getName(id);
+    }
+    return text;
+}
+
+// All roads as text, e.g. "1-2:2.5 2-3:3", in the order getRoads() gives.
+string roadList(const Graph& city)
+{
+    ostringstream text;
+    for (const Road& road : city.getRoads()) {
+        text << (text.tellp() > 0 ? " " : "") << road.from << "-" << road.to << ":" << road.distance;
+    }
+    return text.str();
+}
+
+// The whole content of a text file.
+string readFile(const string& file)
+{
+    ifstream input(file);
+    ostringstream text;
+    text << input.rdbuf();
+    return text.str();
+}
+
+void testRenumberLocations()
+{
+    cout << "\nRenumbering: location IDs after a deletion\n";
+
+    // The example: delete F (ID 6); G and H move down to 6 and 7.
+    Graph city = makeLetterCity();
+    check(city.removeLocation(6), "delete F (ID 6)");
+    check(nameList(city) == "ABCDEGH" && city.getLocationIds() == vector<int>({1, 2, 3, 4, 5, 6, 7}),
+          "IDs 1-7 are A, B, C, D, E, G, H (G was 7, H was 8)");
+    check(city.getNextId() == 8, "the next ID is 8");
+    check(roadList(city) == "1-2:2.5 1-7:6 2-3:3 6-7:5",
+          "roads 3-6 and 6-7 are removed; 7-8 is now 6-7 and 1-8 is now 1-7, distances kept");
+    check(city.hasRoad(7, 6) && city.hasRoad(7, 1) && city.getNeighbors(7).size() == 2,
+          "the adjacency list of H (now 7) points to G (6) and A (1)");
+    check(city.getNeighbors(5).empty() && city.getNeighbors(4).empty(), "D and E still have no roads");
+    check(city.addLocation("I") == 8, "a new location gets the next sequential ID 8");
+
+    // Deleting the first location: every ID moves down.
+    Graph first = makeLetterCity();
+    check(first.removeLocation(1), "delete A (the first location)");
+    check(nameList(first) == "BCDEFGH" && first.getNextId() == 8, "IDs 1-7 are B..H; the next ID is 8");
+    check(roadList(first) == "1-2:3 2-5:4 5-6:2 6-7:5",
+          "roads 1-2 and 1-8 are removed; the others now use the new IDs");
+
+    // Deleting the last location: no other ID changes.
+    Graph last = makeLetterCity();
+    check(last.removeLocation(8), "delete H (the last location)");
+    check(nameList(last) == "ABCDEFG" && last.getNextId() == 8, "A..G keep IDs 1-7; the next ID is 8");
+    check(roadList(last) == "1-2:2.5 2-3:3 3-6:4 6-7:2", "roads 7-8 and 1-8 are removed; the others are unchanged");
+
+    // The only location, an empty city and unknown IDs.
+    Graph single;
+    single.addLocation("BUBT");
+    check(single.removeLocation(1) && single.locationCount() == 0 && single.getNextId() == 1,
+          "deleting the only location leaves an empty city with next ID 1");
+    check(single.addLocation("Uttara") == 1, "the next location gets ID 1 again");
+    Graph empty;
+    check(!empty.removeLocation(1) && empty.getNextId() == 1, "deleting from an empty city is refused");
+    Graph unchanged = makeLetterCity();
+    check(!unchanged.removeLocation(0) && !unchanged.removeLocation(9) && nameList(unchanged) == "ABCDEFGH" &&
+              unchanged.roadCount() == 6,
+          "an unknown ID (0 or 9) is refused and nothing changes");
+}
+
+void testRoadsAfterRenumbering()
+{
+    cout << "\nRenumbering: roads, CSV files and restarting\n";
+    Graph city = makeLetterCity();
+    city.removeLocation(6);   // IDs now: 1 A ... 5 E, 6 G, 7 H
+
+    // Roads are found, added, updated and deleted with the new IDs.
+    check(city.getName(6) == "G" && city.hasRoad(6, 7), "the road G - H is found as 6 - 7");
+    check(city.addRoad(5, 6, 1.5) && city.hasRoad(6, 5), "a new road E - G can be added as 5 - 6");
+    check(city.updateRoad(7, 6, 9.0), "the road G - H can be updated as 7 - 6");
+    check(city.removeRoad(1, 7) && !city.hasRoad(1, 7), "the road A - H can be deleted as 1 - 7");
+    check(roadList(city) == "1-2:2.5 2-3:3 5-6:1.5 6-7:9", "the roads are now 1-2, 2-3, 5-6, 6-7");
+
+    // The CSV files use the new IDs; the road rows are numbered 1, 2, 3, 4 by position.
+    check(saveCity(city, TEST_LOCATIONS, TEST_ROADS, TEST_NEXT_ID), "the renumbered city is saved");
+    check(readFile(TEST_LOCATIONS) == "id,name\n1,A\n2,B\n3,C\n4,D\n5,E\n6,G\n7,H\n",
+          "locations.csv lists IDs 1-7 without a gap");
+    check(readFile(TEST_ROADS) == "from,to,distance\n1,2,2.5\n2,3,3\n5,6,1.5\n6,7,9\n",
+          "roads.csv contains the 4 roads with the new location IDs");
+    check(readFile(TEST_NEXT_ID) == "8\n", "next_id.txt contains 8");
+    check(!filesystem::exists(TEST_LOCATIONS + ".tmp") && !filesystem::exists(TEST_ROADS + ".tmp") &&
+              !filesystem::exists(TEST_NEXT_ID + ".tmp"),
+          "no temporary files are left after saving");
+
+    // Restart: the same city is loaded and the adjacency list is rebuilt.
+    Graph loaded;
+    vector<string> messages;
+    loadCity(loaded, TEST_LOCATIONS, TEST_ROADS, TEST_NEXT_ID, messages);
+    check(messages.empty() && nameList(loaded) == "ABCDEGH" && roadList(loaded) == roadList(city),
+          "after restarting: the same locations and roads, no warnings");
+    check(loaded.getNeighbors(6).size() == 2 && loaded.hasRoad(6, 5) && loaded.hasRoad(6, 7),
+          "after restarting: G (6) is connected to E (5) and H (7)");
+    check(loaded.addLocation("I") == 8, "after restarting: a new location gets ID 8");
+}
+
+void testSaveKeepsOldFilesOnFailure()
+{
+    cout << "\nSaving: a failed save keeps the old files\n";
+    const string folder = "test_data/blocked";
+    filesystem::remove_all(folder);
+    filesystem::create_directories(folder + "/locations.csv");   // a FOLDER with the file's name
+    writeFile(folder + "/roads.csv", "from,to,distance\n1,2,9\n");
+    writeFile(folder + "/next_id.txt", "3\n");
+
+    Graph city = makeLetterCity();
+    check(!saveCity(city, folder + "/locations.csv", folder + "/roads.csv", folder + "/next_id.txt"),
+          "saving fails when locations.csv cannot be replaced");
+    check(readFile(folder + "/roads.csv") == "from,to,distance\n1,2,9\n" &&
+              readFile(folder + "/next_id.txt") == "3\n",
+          "the old roads.csv and next_id.txt are unchanged (no mix of old and new files)");
+    check(!filesystem::exists(folder + "/roads.csv.tmp") && !filesystem::exists(folder + "/next_id.txt.tmp") &&
+              !filesystem::exists(folder + "/locations.csv.tmp"),
+          "the temporary files are removed");
+}
+
+// Builds the city that deleting `deletedId` should give, WITHOUT using
+// removeLocation: every location and road is copied with the shifted IDs.
+Graph expectedAfterDelete(const Graph& original, int deletedId)
+{
+    Graph expected;
+    for (int id : original.getLocationIds()) {
+        if (id != deletedId) {
+            expected.addLocationWithId(id > deletedId ? id - 1 : id, original.getName(id));
+        }
+    }
+    for (const Road& road : original.getRoads()) {
+        if (road.from != deletedId && road.to != deletedId) {
+            expected.addRoad(road.from > deletedId ? road.from - 1 : road.from,
+                             road.to > deletedId ? road.to - 1 : road.to, road.distance);
+        }
+    }
+    return expected;
+}
+
+void testAlgorithmsAfterRenumbering()
+{
+    cout << "\nRenumbering: every algorithm on the sample city\n";
+    string folder = "data/sample";
+    if (!filesystem::exists(folder + "/locations.csv")) {
+        folder = "../data/sample";
+    }
+    Graph sample;
+    vector<string> messages;
+    loadCity(sample, folder + "/locations.csv", folder + "/roads.csv", folder + "/next_id.txt", messages);
+
+    // Delete the first, a middle and the last location in turn.
+    for (int deleted : {1, 5, 10}) {
+        Graph city = sample;
+        city.removeLocation(deleted);
+        Graph expected = expectedAfterDelete(sample, deleted);
+        string label = "delete " + sample.getName(deleted) + " [" + to_string(deleted) + "]: ";
+
+        bool sameNames = nameList(city) == nameList(expected) && city.getLocationIds() == expected.getLocationIds();
+        // The sample has 14 roads; the deleted location's roads are removed.
+        bool sameRoads = city.roadCount() == 14 - static_cast<int>(sample.getNeighbors(deleted).size()) &&
+                         city.roadCount() == expected.roadCount();
+        for (const Road& road : expected.getRoads()) {
+            sameRoads = sameRoads && city.hasRoad(road.from, road.to);
+        }
+        check(sameNames && sameRoads && city.getNextId() == 10,
+              label + "9 locations with IDs 1-9, the right roads, next ID 10");
+
+        bool sameTraversal = true;
+        bool sameRoutes = true;
+        for (int a : city.getLocationIds()) {
+            sameTraversal = sameTraversal && bfs(city, a) == bfs(expected, a) && dfs(city, a) == dfs(expected, a);
+            for (int b : city.getLocationIds()) {
+                RouteResult got = dijkstra(city, a, b);
+                RouteResult want = dijkstra(expected, a, b);
+                sameRoutes = sameRoutes && got.found == want.found &&
+                             (!got.found || (nearlyEqual(got.distance, want.distance) &&
+                                             isValidRoute(city, got.path, got.distance)));
+            }
+        }
+        check(sameTraversal, label + "BFS and DFS give the expected orders from every location");
+        check(sameRoutes, label + "Dijkstra gives the expected distance for every pair");
+
+        SpanningResult tree = kruskal(city);
+        SpanningResult wanted = kruskal(expected);
+        check(nearlyEqual(tree.totalDistance, wanted.totalDistance) && tree.components == wanted.components &&
+                  isSpanningForest(city, tree),
+              label + "Kruskal gives the expected total and parts");
+
+        AllPairsResult table = floydWarshall(city);
+        check(table.dist == floydWarshall(expected).dist && floydMatchesDijkstra(city),
+              label + "Floyd-Warshall gives the expected distance matrix");
+
+        FacilityResult result = bestFacilityLocation(table);
+        FacilityResult wantedResult = bestFacilityLocation(floydWarshall(expected));
+        bool sameFacility = result.parts.size() == wantedResult.parts.size();
+        for (size_t p = 0; sameFacility && p < result.parts.size(); p++) {
+            sameFacility = result.parts[p].centres == wantedResult.parts[p].centres &&
+                           nearlyEqual(result.parts[p].diameter, wantedResult.parts[p].diameter);
+        }
+        check(sameFacility && facilityMatchesTable(city), label + "the best facility location is as expected");
+    }
+}
+
 int main()
 {
     testLocations();
@@ -1778,7 +2047,7 @@ int main()
     testSaveAndLoadEmpty();
     testSaveAndLoadCity();
     testLoadMissingFiles();
-    testIdsNotReusedAfterRestart();
+    testIdsAfterDeleteAndRestart();
     testInvalidNextIdFile();
     testLoadInvalidRecords();
     testLoadWithoutHeader();
@@ -1811,6 +2080,10 @@ int main()
     testFacilityAfterChanges();
     testFacilityTolerance();
     testFacilitySampleCity();
+    testRenumberLocations();
+    testRoadsAfterRenumbering();
+    testSaveKeepsOldFilesOnFailure();
+    testAlgorithmsAfterRenumbering();
 
     cout << "\n" << passed << " passed, " << failed << " failed\n";
 

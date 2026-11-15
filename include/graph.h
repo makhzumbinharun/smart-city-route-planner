@@ -67,8 +67,11 @@ public:
     // A location may change the capitals of its own name ("BUBT" -> "Bubt").
     bool renameLocation(int id, const std::string& newName);
 
-    // Deletes a location and every road connected to it.
-    // Returns false if the location does not exist.
+    // Deletes a location and every road connected to it, then renumbers:
+    // every location with a higher ID moves down by one (6 -> 5, 7 -> 6, ...)
+    // and every road end that refers to a moved location is updated, so the
+    // IDs stay sequential. Names, distances and connections are kept.
+    // Returns false (and changes nothing) if the location does not exist.
     bool removeLocation(int id);
 
     bool hasLocation(int id) const;
@@ -83,13 +86,10 @@ public:
     std::vector<int> getLocationIds() const;    // all IDs in increasing order
     int locationCount() const;
 
-    // The ID that the next new location will get. It only ever increases, so
-    // the ID of a deleted location is never given to another location.
+    // The ID that the next new location will get: the highest location ID
+    // + 1 (1 for an empty city). Because IDs are renumbered after a deletion,
+    // a new location always gets the next sequential ID.
     int getNextId() const;
-
-    // Used when loading saved data. Raises the next ID to `id`; a value lower
-    // than the current next ID is ignored, so an ID can never be reused.
-    void setNextId(int id);
 
     // ----- Roads -----
 
@@ -117,9 +117,12 @@ private:
     // Removes the road to `to` from the road list of `from` (one direction only).
     void removeEdge(int from, int to);
 
-    std::map<int, std::string> names;            // location ID -> name
+    // The new ID of `oldId` after location `deletedId` was deleted.
+    static int shiftedId(int oldId, int deletedId);
+
+    std::map<int, std::string> names;           // location ID -> name
     std::map<int, std::vector<Edge>> adjacency;  // location ID -> its roads
-    int nextId = 1;                              // ID for the next new location
+    int nextId = 1;                              // ID for the next new location (highest ID + 1)
 };
 
 #endif // GRAPH_H

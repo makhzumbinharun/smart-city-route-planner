@@ -182,22 +182,34 @@ Example (sample data, plain-text mode; colour mode uses tree lines):
   location). The location keeps its ID and its roads.
 - **Delete location (4):** choose a location ID. The program shows how many
   roads will be deleted with it and asks `Are you sure? (y/n)`. Only `y`
-  deletes it. All roads connected to the location are deleted as well.
+  deletes it. All roads connected to the location are deleted as well. If
+  locations with higher IDs exist, the program first says that they will move
+  down by one ID, and afterwards shows the change, for example `Locations 6 to
+  10 now have IDs 5 to 9.`
 - **Update road distance (7):** the program shows the roads, then asks for the
   two location IDs of the road (in either order) and the new distance, which
   must be greater than 0 and at most 10,000 km.
 - **Delete road (8):** the program shows the roads and asks for the two
   location IDs of the road to delete. The locations themselves are kept.
-- IDs of deleted locations are never given to new locations, even after the
-  program is restarted.
+- **IDs are renumbered after a deletion,** so a deletion never leaves a gap
+  and the IDs stay 1, 2, 3, ... Example: in the sample city, deleting Farmgate [5] gives
+  Dhanmondi the ID 5 and Gulshan the ID 9, and the road between Airport and
+  Gulshan becomes the road 8–9. The roads themselves have no IDs; they are
+  always named by their two location IDs, which are updated automatically.
+  Check the IDs again (option 2) before using an ID you noted earlier.
+- A new location always gets the next ID after the highest one, also after
+  the program is restarted.
 
 ## 7. Saving and Loading Data
 
 - The city is stored in `data/locations.csv`, `data/roads.csv` and
-  `data/next_id.txt` (the ID for the next new location).
+  `data/next_id.txt` (the ID for the next new location: the highest
+  location ID + 1).
 - It is **loaded automatically** when the program starts and **saved
   automatically** after every successful change; `Saved automatically to the
-  data folder.` is printed each time.
+  data folder.` is printed each time. The files are replaced only when all
+  three were written completely; if saving a deletion fails, the location is
+  not deleted.
 - **First run:** if none of the three files exists yet, the program copies the
   sample city (10 locations, 14 roads) from `data/sample/` and shows
   `First run: no saved city was found, so the sample city was loaded` on the
@@ -209,7 +221,8 @@ Example (sample data, plain-text mode; colour mode uses tree lines):
 - If a file contains invalid lines, each one is skipped and a note such as
   `data/locations.csv line 3: the name "BUBT" is used twice. Line skipped.` is
   shown. The next save rewrites the files without the skipped lines.
-- If `next_id.txt` is missing or invalid, the program uses "highest location
+- If `next_id.txt` is missing, invalid or does not match the locations (for
+  example a file from an older version), the program uses "highest location
   ID + 1" and shows a note.
 
 To start again with the illustrative sample network (10 Dhaka locations, 14
